@@ -283,13 +283,12 @@ Please also find more detailed information for the ALMA-R model with Contrastive
 
 Please find details about X-ALMA in the latest [paper](https://arxiv.org/pdf/2410.03115)
 ```
-@misc{xu2024xalmaplugplay,
-      title={X-ALMA: Plug & Play Modules and Adaptive Rejection for Quality Translation at Scale}, 
-      author={Haoran Xu and Kenton Murray and Philipp Koehn and Hieu Hoang and Akiko Eriguchi and Huda Khayrallah},
-      year={2024},
-      eprint={2410.03115},
-      archivePrefix={arXiv},
-      primaryClass={cs.CL},
-      url={https://arxiv.org/abs/2410.03115}, 
+@inproceedings{
+xu2025xalma,
+title={X-{ALMA}: Plug \& Play Modules and Adaptive Rejection for Quality Translation at Scale},
+author={Haoran Xu and Kenton Murray and Philipp Koehn and Hieu Hoang and Akiko Eriguchi and Huda Khayrallah},
+booktitle={The Thirteenth International Conference on Learning Representations},
+year={2025},
+url={https://openreview.net/forum?id=csbf1p8xUq}
 }
 ```
