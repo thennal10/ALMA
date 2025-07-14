@@ -116,6 +116,14 @@ class ModelArguments:
             )
         },
     )
+    use_xml_tokens: bool = field(
+        default=False,
+        metadata={
+            "help": (
+                "Whether use special tokens for XML markers."
+            )
+        },
+    )
     lora_rank: int = field(
         default=16,
         metadata={
@@ -128,6 +136,12 @@ class ModelArguments:
         default=False,
         metadata={
             "help": "Use multiple GPUs to load one model."
+        },
+    )
+    unfrozen_layers: str = field(
+        default="",
+        metadata={
+            "help": "Comma-seperated unfrozen layers. If specified, all other layers will be frozen."
         },
     )
     peft_model_id: str = field(
@@ -157,16 +171,10 @@ class DataTrainingArguments:
     dataset_config_name: Optional[str] = field(
         default=None, metadata={"help": "The configuration name of the dataset to use (via the datasets library)."}
     )
-    mmt_data_path: Optional[str] = field(default=None, metadata={"help": "The input MMT training data path."})
+    data_path: Optional[str] = field(default=None, metadata={"help": "The input MMT training data path."})
     override_test_data_path: Optional[str] = field(default=None, metadata={"help": "This will override the default test data in the mmt data"})
-    cpo_data_path: Optional[str] = field(default=None, metadata={"help": "The input CPO training data path."})
-    mono_data_path: Optional[str] = field(default=None, metadata={"help": "The input mono data training data path."})
-    oscar_data_path: Optional[str] = field(default=None, metadata={"help": "The input Oscar mono data name."})
-    nllb_pretrain_data_path: Optional[str] = field(default=None, metadata={"help": "The input NLLB pretrain (parallel) data path."})
-    oscar_data_lang: Optional[str] = field(default=None, metadata={"help": "The input Oscar mono data language."})
     text_test_file:  Optional[str] = field(default=None, metadata={"help": "A single test data file in text format, this will override the mmt_data_path and override_test_data_path"})
-    aya_datasets:  Optional[str] = field(default=None, metadata={"help": "The datasets for Aya model."})
-
+    
     max_train_samples: Optional[int] = field(
         default=None,
         metadata={
@@ -231,12 +239,6 @@ class DataTrainingArguments:
         default=False,
         metadata={
             "help": "Whether to ignore the prompt tokens in the loss computation or not."
-        },
-    )
-    use_ul2: bool = field(
-        default=False,
-        metadata={
-            "help": "Whether to enable mixture of denoisers from UL2 model."
         },
     )
     max_source_length: Optional[int] = field(
@@ -321,13 +323,19 @@ class DataTrainingArguments:
         },
     )
 
-    cpo_scorer: str = field(
-        default="xcomet_kiwi",
+    wandb_project_name: str = field(
+        default="",
         metadata={
-            "help": "The scorer of CPO, e.g., using xcomet, kiwi, or both of them (xcomet-kiwi) for CPO training"
+            "help": "The project name for wandb"
         },
     )
-
+    
+    wandb_run_name: str = field(
+        default="",
+        metadata={
+            "help": "The run name for wandb"
+        },
+    )
 
     # predict_source_lang: str = field(default="", metadata={"help": "The source language for testing"})
     # predict_target_lang: str = field(default="en", metadata={"help": "The target language for testing"})

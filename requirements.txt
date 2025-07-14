@@ -1,0 +1,14 @@
+transformers==4.51.1
+peft==0.13.0
+sentencepiece
+sacrebleu
+ipython
+datasets
+evaluate
+deepspeed==0.15.1
+einops
+wandb
+zstandard
+accelerate==0.34.2
+jsonlines
+trl

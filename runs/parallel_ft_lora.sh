@@ -2,22 +2,19 @@ OUTPUT_DIR=${1:-"./alma-7b-parallel-ft-lora"}
 pairs=${2:-"de-en,cs-en,is-en,zh-en,ru-en,en-de,en-cs,en-is,en-zh,en-ru"}
 LORA_RANK=${3:-"16"}
 
-# random port between 30000 and 50000
-port=$(( RANDOM % (50000 - 30000 + 1 ) + 30000 ))
-
-accelerate launch --main_process_port ${port}  --config_file configs/deepspeed_train_config_bf16.yaml \
-     run_llmmt.py \
-    --model_name_or_path haoranxu/ALMA-7B-Pretrain \
-    --mmt_data_path  ./human_written_data/ \
+CUDA_VISIBLE_DEVICES=0 python3 run_llmmt.py \
+    --model_name_or_path haoranxu/ALMA-7B-R \
+    --mmt_data_path  ./training_data/remapped_onlytags \
     --use_peft \
     --lora_rank ${LORA_RANK} \
     --do_train \
     --do_eval \
+    --eval_strategy steps \
     --do_predict \
     --language_pairs ${pairs} \
     --load_best_model_at_end \
     --low_cpu_mem_usage \
-    --fp16 \
+    --bf16 true \
     --learning_rate 2e-3 \
     --weight_decay 0.01 \
     --gradient_accumulation_steps 4 \
@@ -25,12 +22,11 @@ accelerate launch --main_process_port ${port}  --config_file configs/deepspeed_t
     --warmup_ratio 0.01 \
     --ignore_pad_token_for_loss \
     --ignore_prompt_token_for_loss \
-    --per_device_train_batch_size 4 \
-    --per_device_eval_batch_size 4 \
-    --evaluation_strategy steps \
+    --per_device_train_batch_size 2 \
+    --per_device_eval_batch_size 2 \
     --eval_steps 0.05 \
     --save_strategy steps \
-    --save_steps 0.05 \
+    --save_steps 0.1 \
     --save_total_limit 1 \
     --logging_strategy steps \
     --logging_steps 0.05 \
@@ -44,8 +40,5 @@ accelerate launch --main_process_port ${port}  --config_file configs/deepspeed_t
     --overwrite_output_dir \
     --num_beams 5 \
     --ddp_timeout 999999 \
-    --report_to none \
+    --report_to wandb \
     --overwrite_cache
-    
-## Evaluation (BLEU, COMET)
-bash ./evals/eval_generation.sh ${OUTPUT_DIR} ${pairs}

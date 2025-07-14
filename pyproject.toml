@@ -1,0 +1,25 @@
+[project]
+name = "alma"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "accelerate==0.34.2",
+    "datasets>=3.6.0",
+    "deepspeed==0.15.1",
+    "einops>=0.8.1",
+    "evaluate>=0.4.4",
+    "ipykernel>=6.29.5",
+    "ipython>=9.4.0",
+    "jsonlines>=4.0.0",
+    "matplotlib>=3.10.3",
+    "peft==0.13.0",
+    "sacrebleu>=2.5.1",
+    "sentencepiece>=0.2.0",
+    "transformers==4.51.1",
+    "trl>=0.18.2",
+    "unbabel-comet>=2.2.6",
+    "wandb>=0.20.1",
+    "zstandard>=0.23.0",
+]

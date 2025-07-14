@@ -1,6 +1,3 @@
-#!/usr/bin/env python
-# coding=utf-8
-
 import copy
 import os
 from itertools import chain
@@ -44,6 +41,51 @@ class SavePeftModelCallback(TrainerCallback):
             # create an empty toy file to avoid error in deleting old checkpoints
             open(pytorch_model_path, 'w').close()
         return control
+
+XML_TAGS = ['<ph>',
+ '</ph>',
+ '<uicontrol>',
+ '</uicontrol>',
+ '<parmname>',
+ '</parmname>',
+ '<b>',
+ '</b>',
+ '<codeph>',
+ '</codeph>',
+ '<xref>',
+ '</xref>',
+ '<userinput>',
+ '</userinput>',
+ '<varname>',
+ '</varname>',
+ '<filepath>',
+ '</filepath>',
+ '<i>',
+ '</i>',
+ '<menucascade>',
+ '</menucascade>',
+ '<li>',
+ '</li>',
+ '<systemoutput>',
+ '</systemoutput>',
+ '<term>',
+ '</term>',
+ '<cite>',
+ '</cite>',
+ '<ul>',
+ '</ul>',
+ '<title>',
+ '</title>',
+ '<p>',
+ '</p>',
+ '<note>',
+ '</note>',
+ '<fn>',
+ '</fn>',
+ '<indexterm>',
+ '</indexterm>',
+ '<u>',
+ '</u>']
 
 LANG_TABLE = {
     "en": "English",
@@ -262,18 +304,17 @@ def load_mmt_dataset(pairs, data_args, model_args, training_args, logger):
     seen_files =set([])
     train_raw_data, valid_raw_data, test_raw_data = {}, {}, {}
     for pair in pairs:
-        src_lang = pair.split("-")[0]
-        tgt_lang = pair.split("-")[1]
+        src_lang, tgt_lang = pair.split("-")
 
-        # The directory is always "xxen", e.g., deen
+        # The directory is always "xx-en", e.g., de-en
         first_lang = src_lang if src_lang != "en" else tgt_lang
         second_lang = "en"
-        pair_dir = first_lang + second_lang
+        pair_dir = f"{first_lang}-{second_lang}"
             
         h_suffix = f"-{data_args.suffix}" if data_args.suffix else ""
-        train_file = os.path.join(data_args.mmt_data_path, pair_dir, f"train.{first_lang}-{second_lang}{h_suffix}.json")
-        valid_file = os.path.join(data_args.mmt_data_path, pair_dir, f"valid.{first_lang}-{second_lang}.json")
-        test_file = os.path.join(data_args.mmt_data_path, pair_dir, f"test.{src_lang}-{tgt_lang}.json")
+        train_file = os.path.join(data_args.data_path, pair_dir, f"train.{first_lang}-{second_lang}{h_suffix}.json")
+        valid_file = os.path.join(data_args.data_path, pair_dir, f"valid.{first_lang}-{second_lang}.json")
+        test_file = os.path.join(data_args.data_path, pair_dir, f"test.{src_lang}-{tgt_lang}.json")
         
         if not os.path.isfile(train_file):
             logger.info(f"Warning: training file {train_file} does not exist!")
@@ -318,24 +359,6 @@ def load_mmt_dataset(pairs, data_args, model_args, training_args, logger):
         seen_files.add(test_file)
 
     return train_raw_data, valid_raw_data, test_raw_data
-
-def load_a_single_text_file(pairs, data_args, model_args):
-    assert len(pairs) == 1, "Specific translation text source file only needs one translation direction!"
-    src_lang, tgt_lang = list(pairs)[0].split("-")
-    test_raw_data = {}
-    pair = f"{src_lang}-{tgt_lang}"
-    test_raw_data[pair] = load_dataset(
-        'text',
-        data_files={"test": data_args.text_test_file},
-        cache_dir=model_args.cache_dir,
-        token=True if model_args.use_auth_token else None,
-        )
-    def format_features(example):
-        return {pair: {src_lang: example["text"], tgt_lang: ""}}
-
-    test_raw_data[pair] = test_raw_data[pair].map(format_features, remove_columns=["text"])
-
-    return test_raw_data
 
 def get_first_non_pad_index(input_tensor):
     input_tensor = torch.tensor(input_tensor)
@@ -388,9 +411,7 @@ def get_prompt_few_shot(source_lang, target_lang, ex, shots_eval_dict):
     return prompt
 
 def get_prompt(source_lang, target_lang, ex, shots_eval_dict={}, use_target_lang_prompt_eval=False, encoder_decoder_type=False):
-    if encoder_decoder_type == "aya101":
-        return f"Translate to {LANG_TABLE[target_lang]}: " + ex[source_lang]
-    elif encoder_decoder_type == "nllb":
+    if encoder_decoder_type == "nllb":
         return ex[source_lang]
 
     if len(shots_eval_dict) != 0:
@@ -402,7 +423,7 @@ def get_prompt(source_lang, target_lang, ex, shots_eval_dict={}, use_target_lang
         suffix = SUFFIX[target_lang]
     else:
         prefix = f"Translate this from {src_fullname} to {tgt_fullname}:\n{src_fullname}: "
-        suffix = f"\n{tgt_fullname}:"
+        suffix = f"\n{tgt_fullname}: "
     prompt = prefix + ex[source_lang] + suffix
     return prompt
 
@@ -431,7 +452,6 @@ def print_trainable_parameters(model):
     print(
         f"trainable params: {trainable_params} || all params: {all_param} || trainable%: {100 * trainable_params / all_param}"
     )
-
 
 def clean_outputstring(output, key_word, logger, split_idx):
     try:
@@ -469,7 +489,7 @@ def load_model(data_args, model_args, training_args, tokenizer, logger):
         "max_length": data_args.max_source_length + data_args.max_new_tokens,
         # "norm_type": "low_precision_rmsnorm",
     }
-
+    
     if model_args.config_name:
         config = AutoConfig.from_pretrained(model_args.config_name, **config_kwargs)
     elif model_args.model_name_or_path:
@@ -486,12 +506,9 @@ def load_model(data_args, model_args, training_args, tokenizer, logger):
 
     ## Model Loading
     if model_args.model_name_or_path:
-        torch_dtype = (
-            model_args.torch_dtype
-            if model_args.torch_dtype in ["auto", None]
-            else getattr(torch, model_args.torch_dtype)
+        torch_dtype = torch.bfloat16 if training_args.bf16 else (
+            torch.float16 if training_args.fp16 else torch.float32
         )
-
         
         AutoModelLoad = AutoModelForSeq2SeqLM if model_args.encoder_decoder_type else AutoModelForCausalLM
 
@@ -537,15 +554,22 @@ def load_model(data_args, model_args, training_args, tokenizer, logger):
             #     if "lora_A" in name or "lora_B" in name:
             #         param.requires_grad = True
         else:
-            config = LoraConfig(
-                r=model_args.lora_rank,
-                lora_alpha=model_args.lora_rank * 2,
-                target_modules="all-linear",
-                lora_dropout=0.05,
-                bias="none",
-                task_type="CAUSAL_LM" if not model_args.encoder_decoder_type else "SEQ_2_SEQ_LM",
-            )
-            model = get_peft_model(model, config)
+            if model_args.unfrozen_layers:
+                unfrozen_layers = model_args.unfrozen_layers.split(",")
+                for name, param in model.named_parameters():
+                    if not any(layer in name for layer in unfrozen_layers):
+                        param.requires_grad = False
+            else:
+                config = LoraConfig(
+                    r=model_args.lora_rank,
+                    lora_alpha=model_args.lora_rank * 2,
+                    target_modules=["all_linear"] + [] if model_args.use_xml_tokens else ["embed_tokens"],
+                    lora_dropout=0.05,
+                    bias="none",
+                    task_type="CAUSAL_LM" if not model_args.encoder_decoder_type else "SEQ_2_SEQ_LM",
+                    modules_to_save=["embed_tokens", "lm_head"] if model_args.use_xml_tokens else None,
+                )
+                model = get_peft_model(model, config)
         print_trainable_parameters(model)
     return model
 
@@ -631,55 +655,29 @@ def get_preprocessed_data(train_raw_data, valid_raw_data, test_raw_data, pairs, 
         model_inputs["labels"] = labels["input_ids"]
         return model_inputs
 
-    def tokenize_function_aya(examples):
-        inputs = []
-        prompts = []
-        for inp, tgt in zip(examples["inputs"], examples["targets"]):
-            assert model_args.chat_style, "It must be in a chat style with aya datasets"
-            chat_style_prompt = [{"role": "user", "content": inp}]
-            chat_style_input = [
-                {"role": "user", "content": inp},
-                {"role": "assistant", "content": tgt},
-                ]
-
-            prompt = tokenizer.apply_chat_template(chat_style_prompt, tokenize=False, add_generation_prompt=True)
-            input_text = tokenizer.apply_chat_template(chat_style_input, tokenize=False, add_generation_prompt=False)
-            
-            prompts.append(prompt)
-            inputs.append(input_text)
-
-        model_inputs = tokenizer(inputs, max_length=data_args.max_source_length + data_args.max_new_tokens - 1, padding=padding, truncation=True, add_special_tokens=False)
-        # check_add_eos(model_inputs, tokenizer)
-        labels = copy.deepcopy(model_inputs)
-        # If we are padding here, replace all tokenizer.pad_token_id in the labels by -100 when we want to ignore
-        # padding in the loss.
-        if padding == "max_length" and data_args.ignore_pad_token_for_loss:
-            labels["input_ids"] = [
-                [(l if l != tokenizer.pad_token_id else -100) for l in label] for label in labels["input_ids"]
-            ]
-            if data_args.ignore_prompt_token_for_loss:
-                for idx, prompt in enumerate(prompts):
-                    prompt = tokenizer(prompt, max_length=data_args.max_source_length, add_special_tokens=False).input_ids
-                    first_non_pad_idx = get_first_non_pad_index(labels["input_ids"][idx])
-                    labels["input_ids"][idx][first_non_pad_idx: first_non_pad_idx + len(prompt)] = [-100] * len(prompt) 
-        model_inputs["labels"] = labels["input_ids"]
-        return model_inputs
-
     def tokenize_function_train_eval_left_pad_enc_dec(examples):
         inputs = []
         targets = []
+        lang_pairs = []
         for ex in examples["translation"]:
             source_lang, target_lang = list(ex.keys())
             if f"{source_lang}-{target_lang}" in pairs:
                 inp = get_prompt(source_lang, target_lang, ex, encoder_decoder_type=model_args.encoder_decoder_type)
                 inputs.append(inp)
                 targets.append(ex[target_lang])
+                lang_pairs.append((source_lang, target_lang))
             if f"{target_lang}-{source_lang}" in pairs:
                 inp = get_prompt(target_lang, source_lang, ex, encoder_decoder_type=model_args.encoder_decoder_type)
                 inputs.append(inp)
                 targets.append(ex[source_lang])
-        model_inputs = tokenizer(inputs, max_length=data_args.max_source_length, padding=padding, truncation=True, add_special_tokens=True)
-        labels = tokenizer(targets, max_length=data_args.max_new_tokens, padding=padding, truncation=True, add_special_tokens=True)
+                lang_pairs.append((target_lang, source_lang))
+        # do tokenization one by one if there are multiple language pairs
+        if len(set(lang_pairs)) > 1:
+            raise ValueError("Multiple language pairs are not supported.")
+        else:
+            tokenizer.src_lang, tokenizer.tgt_lang = lang_pairs[0]
+            model_inputs = tokenizer(inputs, max_length=data_args.max_source_length, padding=padding, truncation=True, add_special_tokens=True)
+            labels = tokenizer(targets, max_length=data_args.max_new_tokens, padding=padding, truncation=True, add_special_tokens=True)
         # If we are padding here, replace all tokenizer.pad_token_id in the labels by -100 when we want to ignore
         # padding in the loss.
         if padding == "max_length" and data_args.ignore_pad_token_for_loss:
@@ -728,91 +726,6 @@ def get_preprocessed_data(train_raw_data, valid_raw_data, test_raw_data, pairs, 
         model_inputs["labels"] = labels["input_ids"]
         return model_inputs
 
-    def tokenize_function_train_mono(examples):
-        if data_args.use_prefix_lm:
-            inputs = {"input_ids": [], "attention_mask": [], "prefix_mask": []}      
-        else:
-            inputs = {"input_ids": [], "attention_mask": []}
-        block_size = data_args.max_source_length + data_args.max_new_tokens
-        for ex in examples["translation"]:
-            lang1, lang2 = list(ex.keys())
-            lang = lang1 if lang1 != "en" else lang2
-
-            for lang in [lang1, lang2]:
-                if ex[lang] == "":
-                    continue
-                _input = tokenizer(ex[lang], max_length=4096, add_special_tokens=True)
-                _input['input_ids'].append(tokenizer.eos_token_id)
-                _input['attention_mask'].append(1)
-                if data_args.use_prefix_lm:
-                    _input['prefix_mask'] = [0] * len(_input['attention_mask'])
-                    inputs["prefix_mask"].append(_input['prefix_mask'])
-                inputs["input_ids"].append(_input['input_ids'])
-                inputs['attention_mask'].append(_input['attention_mask'])
-            
-        
-        concatenated_inputs = {k: list(chain(*inputs[k])) for k in inputs.keys()}
-        total_length = len(concatenated_inputs[list(inputs.keys())[0]])
-        total_length = (total_length // block_size) * block_size
-
-        model_inputs = {
-            k: [t[i : i + block_size] for i in range(0, total_length, block_size)]
-            for k, t in concatenated_inputs.items()
-        }
-
-        model_inputs["labels"] = copy.deepcopy(model_inputs["input_ids"])
-        return model_inputs
-
-    def tokenize_function_train_oscar_mono(examples):
-        if data_args.use_prefix_lm:
-            inputs = {"input_ids": [], "attention_mask": [], "prefix_mask": []}      
-        else:
-            inputs = {"input_ids": [], "attention_mask": []}
-        block_size = data_args.max_source_length + data_args.max_new_tokens
-        for ex in examples["raw_text"]:
-            _input = tokenizer(ex.strip(), max_length=4096, add_special_tokens=True)
-            _input['input_ids'].append(tokenizer.eos_token_id)
-            _input['attention_mask'].append(1)
-            if data_args.use_prefix_lm:
-                _input['prefix_mask'] = [0] * len(_input['attention_mask'])
-                inputs["prefix_mask"].append(_input['prefix_mask'])
-            inputs["input_ids"].append(_input['input_ids'])
-            inputs['attention_mask'].append(_input['attention_mask'])
-            
-        
-        concatenated_inputs = {k: list(chain(*inputs[k])) for k in inputs.keys()}
-        total_length = len(concatenated_inputs[list(inputs.keys())[0]])
-        total_length = (total_length // block_size) * block_size
-
-        model_inputs = {
-            k: [t[i : i + block_size] for i in range(0, total_length, block_size)]
-            for k, t in concatenated_inputs.items()
-        }
-
-        model_inputs["labels"] = copy.deepcopy(model_inputs["input_ids"])
-        return model_inputs
-
-    def tokenize_function_train_nllb_pretrain(examples):
-        inputs = {"input_ids": [], "attention_mask": []}
-        block_size = data_args.max_source_length + data_args.max_new_tokens
-        for ex in examples["raw_text"]:
-            _input = tokenizer(ex.strip(), max_length=4096, add_special_tokens=True)
-            _input['input_ids'].append(tokenizer.eos_token_id)
-            _input['attention_mask'].append(1)
-            inputs["input_ids"].append(_input['input_ids'])
-            inputs['attention_mask'].append(_input['attention_mask'])
-            
-        concatenated_inputs = {k: list(chain(*inputs[k])) for k in inputs.keys()}
-        total_length = len(concatenated_inputs[list(inputs.keys())[0]])
-        total_length = (total_length // block_size) * block_size
-
-        model_inputs = {
-            k: [t[i : i + block_size] for i in range(0, total_length, block_size)]
-            for k, t in concatenated_inputs.items()
-        }
-        model_inputs["labels"] = copy.deepcopy(model_inputs["input_ids"])
-        return model_inputs
-
     def tokenize_function_test(examples):
         prompts = []
         feature_name = list(examples.keys())[0]
@@ -836,130 +749,41 @@ def get_preprocessed_data(train_raw_data, valid_raw_data, test_raw_data, pairs, 
                 model_inputs["prefix_mask"].append(prefix_mask)
         return model_inputs
 
-    def tokenize_function_aya_test(examples):
-        prompts = []
-        for inp, tgt in zip(examples["inputs"], examples["targets"]):
-            prompt = inp
-            if model_args.chat_style:
-                prompt = [{"role": "user", "content": prompt}]
-                prompt = tokenizer.apply_chat_template(prompt, tokenize=False, add_generation_prompt=True)
-            prompts.append(prompt)
-        original_padding_side = tokenizer.padding_side
-        if original_padding_side != "left":
-            tokenizer.padding_side = "left"
-        model_inputs = tokenizer(prompts, max_length=data_args.max_source_length, padding=padding, truncation=True, add_special_tokens=True if not model_args.chat_style else False)
-        tokenizer.padding_side = original_padding_side
-        return model_inputs
-    
     # Preprocessing the datasets.
-    if data_args.mmt_data_path or data_args.mono_data_path:
-        column_names_mmt = ["translation"]
-    if data_args.oscar_data_path:
-        if "oscar" in data_args.oscar_data_path:
-            column_names_oscar = ["id", "meta", "text", "raw_text"]
-        elif data_args.oscar_data_path == "allenai/c4":
-            column_names_oscar = ["text", "timestamp", "url", "raw_text"]
-        elif data_args.oscar_data_path == "cc100":
-            column_names_oscar = ["id", "text", "raw_text"]
-    if data_args.aya_datasets:
-        column_names_aya = ["inputs", "targets", "language", "language_code", "annotation_type", "user_id"]
-    if data_args.nllb_pretrain_data_path:
-        column_names_nllb = ["raw_text"]
+    column_names = ["translation"]
 
     # since this will be pickled to avoid _LazyModule error in Hasher force logger loading before tokenize_function
     tok_logger = transformers.utils.logging.get_logger("transformers.tokenization_utils_base")
     padding = "max_length"
 
     train_datasets, eval_datasets, test_datasets = None, None, None
-    mmt_train_eval_tok_func = tokenize_function_train_eval_right_pad if data_args.right_pad else tokenize_function_train_eval_left_pad
+    train_eval_tok_func = tokenize_function_train_eval_right_pad if data_args.right_pad else tokenize_function_train_eval_left_pad
     if model_args.encoder_decoder_type:
-        mmt_train_eval_tok_func = tokenize_function_train_eval_left_pad_enc_dec
+        train_eval_tok_func = tokenize_function_train_eval_left_pad_enc_dec
     
     if training_args.do_train:
         processed_datasets = []
-        if data_args.mmt_data_path:
-            for lg_pair, sub_raw_data in train_raw_data["mmt"].items():
-                train_dataset = sub_raw_data["train"]
-                if data_args.max_train_samples is not None:
-                    max_train_samples = min(len(train_dataset), data_args.max_train_samples)
-                    train_dataset = train_dataset.select(range(max_train_samples))
-                with training_args.main_process_first(desc="train dataset map pre-processing"):
-                    if not data_args.streaming:
-                        train_dataset = train_dataset.map(
-                            mmt_train_eval_tok_func,
-                            batched=True,
-                            num_proc=data_args.preprocessing_num_workers,
-                            remove_columns=column_names_mmt,
-                            load_from_cache_file=not data_args.overwrite_cache,
-                            desc="Running tokenizer on MMT train dataset",
-                        )
-                    else:
-                        train_dataset = train_dataset.map(
-                            mmt_train_eval_tok_func,
-                            batched=True,
-                            remove_columns=column_names_mmt,
-                        )    
-                processed_datasets.append(train_dataset)
-
-        if data_args.aya_datasets:
-            train_dataset = train_raw_data["aya"]
-            if data_args.max_train_samples is not None:
-                max_train_samples = min(len(train_dataset), data_args.max_train_samples)
-                train_dataset = train_dataset.select(range(max_train_samples))
-            with training_args.main_process_first(desc="Aya dataset map pre-processing"):
-                assert not data_args.streaming, "Streaming is not supported for Aya datasets now"
-                train_dataset = train_dataset.map(
-                    tokenize_function_aya,
-                    batched=True,
-                    num_proc=data_args.preprocessing_num_workers,
-                    remove_columns=column_names_aya,
-                    load_from_cache_file=not data_args.overwrite_cache,
-                    desc="Running tokenizer on Aya train dataset",
-                )
-            processed_datasets.append(train_dataset)
-        
-
-        if data_args.mono_data_path:
-            train_dataset = train_raw_data["mono"]['train']
+        for lg_pair, sub_raw_data in train_raw_data.items():
+            train_dataset = sub_raw_data["train"]
             if data_args.max_train_samples is not None:
                 max_train_samples = min(len(train_dataset), data_args.max_train_samples)
                 train_dataset = train_dataset.select(range(max_train_samples))
             with training_args.main_process_first(desc="train dataset map pre-processing"):
                 if not data_args.streaming:
                     train_dataset = train_dataset.map(
-                        tokenize_function_train_mono,
+                        train_eval_tok_func,
                         batched=True,
                         num_proc=data_args.preprocessing_num_workers,
-                        remove_columns=column_names_mmt,
+                        remove_columns=column_names,
                         load_from_cache_file=not data_args.overwrite_cache,
-                        desc="Running tokenizer on monolingual train dataset",
+                        desc="Running tokenizer on MMT train dataset",
                     )
                 else:
                     train_dataset = train_dataset.map(
-                        tokenize_function_train_mono,
+                        train_eval_tok_func,
                         batched=True,
-                        remove_columns=column_names_mmt,
-                    )
-            processed_datasets.append(train_dataset)
-            
-        if "oscar" in train_raw_data:
-            train_dataset = train_raw_data["oscar"]
-            with training_args.main_process_first(desc="train dataset map pre-processing"):
-                train_dataset = train_dataset.map(
-                    tokenize_function_train_oscar_mono,
-                    batched=True,
-                    remove_columns=column_names_oscar,
-                )
-            processed_datasets.append(train_dataset)
-
-        if "nllb_pretrain" in train_raw_data:
-            train_dataset = train_raw_data["nllb_pretrain"]
-            with training_args.main_process_first(desc="NLLB Pre-train dataset map pre-processing"):
-                train_dataset = train_dataset.map(
-                    tokenize_function_train_nllb_pretrain,
-                    batched=True,
-                    remove_columns=column_names_nllb,
-                )
+                        remove_columns=column_names,
+                    )    
             processed_datasets.append(train_dataset)
              
         train_datasets = concatenate_datasets(processed_datasets)
@@ -974,10 +798,10 @@ def get_preprocessed_data(train_raw_data, valid_raw_data, test_raw_data, pairs, 
                 eval_dataset = eval_dataset.select(range(max_eval_samples))
             with training_args.main_process_first(desc="validation dataset map pre-processing"):
                 eval_dataset = eval_dataset.map(
-                    mmt_train_eval_tok_func,
+                    train_eval_tok_func,
                     batched=True,
                     num_proc=data_args.preprocessing_num_workers,
-                    remove_columns=column_names_mmt,
+                    remove_columns=column_names,
                     load_from_cache_file=not data_args.overwrite_cache,
                     desc="Running tokenizer valid dataset",
                 )
@@ -986,183 +810,21 @@ def get_preprocessed_data(train_raw_data, valid_raw_data, test_raw_data, pairs, 
         eval_datasets = eval_datasets.shuffle(seed=training_args.seed)
 
     if training_args.do_predict:
-        test_datasets = {"mmt": {}, "aya": {}}
-        if data_args.mmt_data_path:
-            for lg_pair, sub_raw_data in test_raw_data["mmt"].items():
-                test_dataset = sub_raw_data["test"]
-                if data_args.max_test_samples is not None:
-                    max_test_samples = min(len(test_dataset), data_args.max_test_samples)
-                    test_dataset = test_dataset.select(range(max_test_samples))
-                with training_args.main_process_first(desc="test dataset map pre-processing"):
-                    test_dataset = test_dataset.map(
-                        tokenize_function_test,
-                        batched=True,
-                        num_proc=data_args.preprocessing_num_workers,
-                        remove_columns=[lg_pair],
-                        load_from_cache_file=not data_args.overwrite_cache,
-                        desc="Running tokenizer test dataset",
-                    )
-                test_datasets["mmt"][lg_pair] = test_dataset
-        if data_args.aya_datasets:
-            for lg in test_raw_data["aya"].keys():
-                test_dataset = test_raw_data["aya"][lg]
-                if data_args.max_test_samples is not None:
-                    max_test_samples = min(len(test_dataset), data_args.max_test_samples)
-                    test_dataset = test_dataset.select(range(max_test_samples))
-                with training_args.main_process_first(desc="test dataset map pre-processing"):
-                    test_dataset = test_dataset.map(
-                        tokenize_function_aya_test,
-                        batched=True,
-                        num_proc=data_args.preprocessing_num_workers,
-                        remove_columns=column_names_aya,
-                        load_from_cache_file=not data_args.overwrite_cache,
-                        desc="Running tokenizer Aya test dataset",
-                    )
-                test_datasets["aya"][lg] = test_dataset
+        test_datasets = {}
+        for lg_pair, sub_raw_data in test_raw_data.items():
+            test_dataset = sub_raw_data["test"]
+            if data_args.max_test_samples is not None:
+                max_test_samples = min(len(test_dataset), data_args.max_test_samples)
+                test_dataset = test_dataset.select(range(max_test_samples))
+            with training_args.main_process_first(desc="test dataset map pre-processing"):
+                test_dataset = test_dataset.map(
+                    tokenize_function_test,
+                    batched=True,
+                    num_proc=data_args.preprocessing_num_workers,
+                    remove_columns=[lg_pair],
+                    load_from_cache_file=not data_args.overwrite_cache,
+                    desc="Running tokenizer test dataset",
+                )
+            test_datasets[lg_pair] = test_dataset
         
-    return train_datasets, eval_datasets, test_datasets
-
-def preprocess_cpo_data(train_raw_data, valid_raw_data, test_raw_data, pairs, tokenizer, shots_eval_dict, data_args, training_args, model_args):
-
-    def get_chosen_reject(example, target_lang):
-        sys1_score_key = f"gpt4_{target_lang}_{data_args.cpo_scorer}"
-        sys2_score_key = f"alma_{target_lang}_{data_args.cpo_scorer}"
-        ref_score_key = f"ref_{target_lang}_{data_args.cpo_scorer}"
-
-        sys1_output_key = f"gpt4_{target_lang}"
-        sys2_output_key = f"alma_{target_lang}"
-        ref_output_key = target_lang
-
-
-        # Human eval
-        if "Delta" in example and example["Delta"] != 0:
-            if example["Delta"] > 0:
-                return example[sys1_output_key], example[sys2_output_key]
-            else:
-                return example[sys2_output_key], example[sys1_output_key]
-
-        # Defining the sentences and their scores
-        sentences = [example[ref_output_key], example[sys1_output_key], example[sys2_output_key]]
-        scores = [example[ref_score_key], example[sys1_score_key], example[sys2_score_key]]
-
-        # Finding the indexes for the highest and lowest scores
-        highest_score_index = scores.index(max(scores))
-        lowest_score_index = scores.index(min(scores))
-
-        # Assigning the corresponding sentences
-        highest_score_sentence = sentences[highest_score_index]
-        lowest_score_sentence = sentences[lowest_score_index]
-        return highest_score_sentence, lowest_score_sentence
-            
-    def meet_requirements(prompt_tok, example, target_lang):
-        # if prompt is too long
-        if len(prompt_tok) > data_args.max_source_length:
-            return False
-
-        # if the order is fixed, e.g., it has to be en->de
-        if "required_directions" in example and example["required_directions"] != "":
-            tgt = example["required_directions"].split("-")[1]
-            if tgt != target_lang:
-                return False
-        return True 
-
-    def cpo_prompt_function(examples):
-        new_examples = {
-            "prompt": [],
-            "chosen": [],
-            "rejected": [],
-        }
-        for ex in examples["translation"]:
-            source_lang, target_lang = ex["language_pair"].split("-")
-            if f"{source_lang}-{target_lang}" in pairs:
-                prompt = get_prompt(source_lang, target_lang, ex)
-                if model_args.chat_style:
-                    chat_style_prompt = [{"role": "user", "content": prompt}]
-                    prompt = tokenizer.apply_chat_template(chat_style_prompt, tokenize=False, add_generation_prompt=True)
-                prompt_tok = tokenizer(prompt, max_length=data_args.max_source_length, padding=True, truncation=True, add_special_tokens=True if not model_args.chat_style else False).input_ids
-                if meet_requirements(prompt_tok, ex, target_lang):
-                    new_examples["prompt"].append(prompt)
-                    chosen, rejected = get_chosen_reject(ex, target_lang)
-                    new_examples["chosen"].append(chosen)
-                    new_examples["rejected"].append(rejected)
-            if f"{target_lang}-{source_lang}" in pairs:
-                prompt = get_prompt(target_lang, source_lang, ex)
-                if model_args.chat_style:
-                    chat_style_prompt = [{"role": "user", "content": prompt}]
-                    prompt = tokenizer.apply_chat_template(chat_style_prompt, tokenize=False, add_generation_prompt=True)
-                prompt_tok = tokenizer(prompt, max_length=data_args.max_source_length, padding=True, truncation=True, add_special_tokens=True if not model_args.chat_style else False).input_ids
-                if meet_requirements(prompt_tok, ex, source_lang):
-                    new_examples["prompt"].append(prompt)
-                    chosen, rejected = get_chosen_reject(ex, source_lang)
-                    new_examples["chosen"].append(chosen)
-                    new_examples["rejected"].append(rejected)
-        return new_examples
-
-    def aya_cpo_function(examples):
-        new_examples = {
-            "prompt": [],
-            "chosen": [],
-            "rejected": [],
-        }
-        for prompt, chosen, rejected in zip(examples["prompt"], examples["chosen"], examples["rejected"]):
-            if model_args.chat_style:
-                chat_style_prompt = [{"role": "user", "content": prompt}]
-                prompt = tokenizer.apply_chat_template(chat_style_prompt, tokenize=False, add_generation_prompt=True)
-            prompt_tok = tokenizer(prompt, max_length=data_args.max_source_length, padding=True, truncation=True, add_special_tokens=True if not model_args.chat_style else False).input_ids
-            if len(prompt_tok) < data_args.max_source_length:
-                new_examples["prompt"].append(prompt)
-                new_examples["chosen"].append(chosen)
-                new_examples["rejected"].append(rejected)
-        return new_examples
-
-    # Preprocessing the datasets.
-    train_datasets, eval_datasets, test_datasets = None, None, None
-    if training_args.do_train:
-        processed_datasets = []
-        if data_args.cpo_data_path:
-            for lg_pair, sub_raw_data in train_raw_data["mmt"].items():
-                train_dataset = sub_raw_data["train"]
-                if data_args.max_train_samples is not None:
-                    max_train_samples = min(len(train_dataset), data_args.max_train_samples)
-                    train_dataset = train_dataset.select(range(max_train_samples))
-                with training_args.main_process_first(desc="CPO train dataset map pre-processing"):
-                    if not data_args.streaming:
-                        train_dataset = train_dataset.map(
-                            cpo_prompt_function,
-                            batched=True,
-                            batch_size=1,
-                            num_proc=data_args.preprocessing_num_workers,
-                            remove_columns=["translation"],
-                            load_from_cache_file=not data_args.overwrite_cache,
-                            desc="Running CPO preprocessing",
-                        )
-                    else:
-                        train_dataset = train_dataset.map(
-                            cpo_prompt_function,
-                            batched=True,
-                            batch_size=1,
-                            remove_columns=["translation"],
-                        )    
-                processed_datasets.append(train_dataset)
-        
-        if data_args.aya_datasets:
-            for lg in train_raw_data["aya"].keys():
-                train_dataset = train_raw_data["aya"][lg]["train"]
-                if data_args.max_train_samples is not None:
-                    max_train_samples = min(len(train_dataset), data_args.max_train_samples)
-                    train_dataset = train_dataset.select(range(max_train_samples))
-                with training_args.main_process_first(desc="Aya CPO dataset map pre-processing"):
-                    train_dataset = train_dataset.map(
-                        aya_cpo_function,
-                        batched=True,
-                        batch_size=1,
-                        num_proc=data_args.preprocessing_num_workers,
-                        load_from_cache_file=not data_args.overwrite_cache,
-                        desc="Running tokenizer on Aya CPO train dataset",
-                    )
-                processed_datasets.append(train_dataset)
-            
-        train_datasets = concatenate_datasets(processed_datasets)
-        train_datasets = train_datasets.shuffle(seed=training_args.seed)        
-
     return train_datasets, eval_datasets, test_datasets

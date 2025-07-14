@@ -20,7 +20,6 @@ import torch
 from torch import nn
 from torch.utils.data import Dataset
 
-from transformers.deepspeed import is_deepspeed_zero3_enabled
 from transformers.generation.configuration_utils import GenerationConfig
 from transformers.trainer import Trainer
 from transformers.utils import logging
@@ -73,6 +72,10 @@ class LlmmtTrainer(Trainer):
             gen_config = self.load_generation_config(self.args.generation_config)
             self.model.generation_config = gen_config
 
+    def _wrap_model(self, model, dataloader: Optional[Dataset] = None, training: bool = False) -> nn.Module:
+        # Prevent Accelerator from re-wrapping/casting the model
+        return model
+    
     @staticmethod
     def load_generation_config(gen_config_arg: Union[str, GenerationConfig]) -> GenerationConfig:
         """
@@ -259,10 +262,6 @@ class LlmmtTrainer(Trainer):
             gen_kwargs["max_length"] = self.model.config.max_length
         gen_kwargs["num_beams"] = (
             gen_kwargs["num_beams"] if gen_kwargs.get("num_beams") is not None else self.model.config.num_beams
-        )
-        default_synced_gpus = True if is_deepspeed_zero3_enabled() else False
-        gen_kwargs["synced_gpus"] = (
-            gen_kwargs["synced_gpus"] if gen_kwargs.get("synced_gpus") is not None else default_synced_gpus
         )
 
         # If the `decoder_input_ids` was created from `labels`, evict the former, so that the model can freely generate
