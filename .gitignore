@@ -1,0 +1,46 @@
+# General
+*.log
+*.tmp
+*.swp
+*.DS_Store
+*.bak
+*.old
+*.orig
+*.rej
+*.sublime-workspace
+*.sublime-project
+
+# Python
+*.pyc
+*.pyo
+*.pyd
+__pycache__/
+*.env
+.env
+*.venv
+.venv/
+*.egg
+*.egg-info/
+dist/
+build/
+*.wheel
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+
+# Virtual Environment
+.venv/
+env/
+venv/
+
+# IDEs and Editors
+.vscode/
+.idea/
+*.iml
+
+# WandB
+wandb/
+
+# Custom directories
+training_data/
+outputs/
