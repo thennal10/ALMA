@@ -140,7 +140,9 @@ def main():
         print(f"[{lang_pair}] COMET Score: {scores.system_score:.4f}")
         with open(f"{output_dir}/test.{lang_pair}.comet", 'w', encoding='utf-8') as f:
             f.write("reference\thypothesis\tscore\n")
-            for score, ref, hyp in zip(scores.scores, references, hypotheses):
+            for score, data in zip(scores.scores, comet_data):
+                ref = data['ref']
+                hyp = data['mt']
                 f.write(f"{ref}\t{hyp}\t{score}\n")
             f.write(f"system_score: {scores.system_score}\n")
         
