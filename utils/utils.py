@@ -675,7 +675,8 @@ def get_preprocessed_data(train_raw_data, valid_raw_data, test_raw_data, pairs, 
         if len(set(lang_pairs)) > 1:
             raise ValueError("Multiple language pairs are not supported.")
         else:
-            tokenizer.src_lang, tokenizer.tgt_lang = lang_pairs[0]
+            src_lang, tgt_lang = lang_pairs[0]
+            tokenizer.src_lang, tokenizer.tgt_lang = NLLB_CODE[src_lang], NLLB_CODE[tgt_lang]
             model_inputs = tokenizer(inputs, max_length=data_args.max_source_length, padding=padding, truncation=True, add_special_tokens=True)
             labels = tokenizer(targets, max_length=data_args.max_new_tokens, padding=padding, truncation=True, add_special_tokens=True)
         # If we are padding here, replace all tokenizer.pad_token_id in the labels by -100 when we want to ignore
